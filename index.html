@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>내 자산 · 목표 부동산 대시보드</title>
+<!-- Chart.js 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;background:#f5f7fb;color:#202733}
@@ -17,9 +19,12 @@ h1{margin:0;font-size:30px;letter-spacing:-1px}
 .card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:24px;margin-bottom:24px;box-shadow:0 3px 12px rgba(15,23,42,.04)}
 .card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .card-title{font-size:18px;font-weight:800}
-.remove{border:0;background:#f1f5f9;color:#64748b;border-radius:9px;padding:7px 11px;cursor:pointer}
-.remove:hover{background:#e2e8f0}
-.grid{display:grid;grid-template-columns:1fr 1.2fr 1.4fr 1fr 1fr 1.2fr;gap:16px}.full{grid-column:1/-1}.conditional{display:none}.conditional.show{display:block}
+.remove{border:0;background:#f1f5f9;color:#64748b;border-radius:9px;padding:7px 11px;cursor:pointer;font-weight:700}
+.remove:hover{background:#fee2e2;color:#ef4444}
+.grid{display:grid;grid-template-columns:1fr 1.2fr 1.4fr 1fr 1fr 1.2fr;gap:16px}
+.full{grid-column:1/-1}
+.conditional{display:none}
+.conditional.show{display:block}
 label{display:block;font-size:13px;font-weight:700;margin-bottom:8px;color:#334155}
 input,select{width:100%;height:44px;border:1px solid #cbd5e1;border-radius:10px;padding:0 12px;font-size:14px;background:#fff;color:#1e293b;outline:none}
 input:focus,select:focus{border-color:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.12)}
@@ -28,18 +33,23 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
 .actions{display:flex;justify-content:center;margin-top:24px}
 .add{height:48px;padding:0 24px;border:1px dashed #94a3b8;background:#fff;border-radius:12px;color:#334155;font-size:14px;font-weight:800;cursor:pointer}
 .add:hover{background:#f8fafc;border-color:#475569}
-.notice{margin-top:18px;margin-bottom:24px;padding:14px 16px;background:#f8fafc;border-radius:12px;font-size:13px;color:#64748b;line-height:1.6}
 .savebar{position:sticky;bottom:16px;display:flex;justify-content:flex-end;margin-top:12px}
 .save{border:0;background:#111827;color:white;border-radius:12px;padding:13px 22px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(15,23,42,.18)}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.25s}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* 그룹 및 요약 대시보드 전용 스타일 */
+/* 그룹 스타일 */
 .group-box{background:#f8fafc;border:1px solid #f1f5f9;border-radius:14px;padding:16px;margin-bottom:16px}
 .group-title{font-size:15px;font-weight:700;color:#1e293b;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .loan-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.income-grid-person{display:grid;grid-template-columns:1fr 1.2fr 1fr 1fr;gap:12px}
 .finance-grid-person{display:grid;grid-template-columns:1fr 1.2fr 1.2fr 1.2fr 1fr;gap:12px}
+
+/* 소득 및 지출 카드 전용 스타일 */
+.member-card{background:#fafcfd;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-bottom:20px}
+.member-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid #e2e8f0;padding-bottom:12px}
+.member-title{font-size:16px;font-weight:800;color:#0f172a}
+.member-section-title{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.income-grid{display:grid;grid-template-columns:repeat(3, 1fr);gap:12px}
 .expense-grid{display:grid;grid-template-columns:repeat(5, 1fr);gap:12px}
 
 /* STEP 2 요약 카드 전용 */
@@ -52,29 +62,57 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
 .summary-item-value{font-size:28px;font-weight:800;color:#38bdf8;letter-spacing:-0.5px}
 .summary-item-sub{font-size:12px;color:#94a3b8;margin-top:8px;line-height:1.4}
 
-@media(max-width:1000px){
-  .grid{grid-template-columns:1fr 1fr 1fr}
-}
-@media(max-width:900px){
-  .summary-grid{grid-template-columns:1fr}
-  .expense-grid{grid-template-columns:1fr 1fr 1fr}
-  .finance-grid-person{grid-template-columns:1fr 1fr}
-}
-@media(max-width:800px){
-  .grid{grid-template-columns:1fr 1fr}
-  .loan-grid, .income-grid-person{grid-template-columns:1fr 1fr}
-  .header{align-items:flex-start;gap:16px;flex-direction:column}
-}
-@media(max-width:520px){
-  .container{padding:24px 14px}
-  .grid, .loan-grid, .income-grid-person, .finance-grid-person, .expense-grid{grid-template-columns:1fr}
-  h1{font-size:24px}
-  .card{padding:18px}
-}
+/* 관심 단지 전용 차트 및 검색 박스 스타일 */
+.target-grid{display:grid;grid-template-columns:1fr 1.2fr 1.4fr 1fr 1fr 1fr;gap:16px}
+.chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-top:20px}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.chart-title{font-size:14px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px}
+.search-btn{height:44px;background:#2563eb;color:#fff;border:0;border-radius:10px;font-weight:700;cursor:pointer;transition:.2s}
+.search-btn:hover{background:#1d4ed8}
+.search-btn:disabled{background:#94a3b8;cursor:not-allowed}
+
+/* 새로 추가: 조회 상태/에러 메시지 표시 영역 */
+.target-status{margin-top:10px;font-size:12.5px;line-height:1.5;padding:10px 12px;border-radius:10px;display:none}
+.target-status.show{display:block}
+.target-status.info{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.target-status.success{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+.target-status.error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.target-status.warn{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
+
+@media(max-width:1000px){.grid, .target-grid{grid-template-columns:1fr 1fr 1fr}}
+@media(max-width:900px){.summary-grid{grid-template-columns:1fr}.expense-grid{grid-template-columns:1fr 1fr 1fr}.finance-grid-person{grid-template-columns:1fr 1fr}}
+@media(max-width:800px){.grid, .target-grid, .loan-grid, .income-grid{grid-template-columns:1fr 1fr}.header{align-items:flex-start;gap:16px;flex-direction:column}}
+@media(max-width:520px){.container{padding:24px 14px}.grid, .target-grid, .loan-grid, .income-grid, .finance-grid-person, .expense-grid{grid-template-columns:1fr}h1{font-size:24px}.card{padding:18px}}
+
+/* 비밀번호 잠금 화면 */
+#lockOverlay{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:9999}
+#lockBox{background:#fff;border-radius:18px;padding:36px 32px;width:100%;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.35);text-align:center}
+#lockBox .lock-emoji{font-size:34px;margin-bottom:10px}
+#lockBox h2{margin:0 0 6px;font-size:19px;color:#0f172a}
+#lockBox p{margin:0 0 18px;font-size:13px;color:#64748b}
+#lockInput{width:100%;height:48px;border:1px solid #cbd5e1;border-radius:10px;padding:0 14px;font-size:18px;letter-spacing:4px;text-align:center;outline:none}
+#lockInput:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+#lockError{color:#ef4444;font-size:12.5px;margin-top:10px;min-height:16px}
+#lockBtn{margin-top:14px;width:100%;height:46px;border:0;border-radius:10px;background:#111827;color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+#lockBtn:hover{background:#1f2937}
+#mainContent{display:none}
 </style>
 </head>
 <body>
-<div class="container">
+
+<!-- 비밀번호 잠금 화면 -->
+<div id="lockOverlay">
+  <div id="lockBox">
+    <div class="lock-emoji">🔒</div>
+    <h2>자산 대시보드</h2>
+    <p>비밀번호를 입력해주세요.</p>
+    <input id="lockInput" type="password" inputmode="numeric" maxlength="10" placeholder="••••••" autofocus>
+    <div id="lockError"></div>
+    <button id="lockBtn">확인</button>
+  </div>
+</div>
+
+<div class="container" id="mainContent">
   <div class="header">
     <div>
       <div class="eyebrow">MY ASSET DASHBOARD · STEP 1</div>
@@ -90,9 +128,8 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
     <button class="add" id="addBtn" style="display: inline-block;">＋ 부동산 추가</button>
   </div>
 
-
   <!-- 자산 섹션 (현금 및 보증금) -->
-  <section class="card asset-card">
+  <section class="card asset-card" style="margin-top: 24px;">
     <div class="card-head">
       <div>
         <div class="card-title">💰 재무상태 / 자산</div>
@@ -288,54 +325,19 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
     </div>
   </section>
 
-  <!-- 월소득 및 지출 섹션 -->
-  <section class="card income-card">
+  <!-- 통합 월소득 및 지출 섹션 -->
+  <section class="card income-expense-card">
     <div class="card-head">
       <div>
-        <div class="card-title">💵 월소득 및 지출</div>
-        <div class="subtitle" style="margin-top:6px">가족 구성원별 월 소득과 월 지출 현황을 입력하세요. (만원 단위)</div>
+        <div class="card-title">💵 가족 구성원별 월 소득 및 지출</div>
+        <div class="subtitle" style="margin-top:6px">구성원별로 월 소득과 지출 항목을 함께 입력하세요. (만원 단위)</div>
       </div>
     </div>
 
-    <!-- 소득 그룹 -->
-    <div style="margin-bottom: 24px;">
-      <div style="font-weight:700; font-size:15px; margin-bottom:12px; color:#1e293b;">📈 월 소득</div>
-      <div id="familyIncomeContainer"></div>
-      <div class="actions" style="margin-top: 12px; justify-content: flex-start;">
-        <button type="button" class="add" id="addFamilyBtn" style="height: 40px; font-size: 13px;">＋ 가족 소득 추가</button>
-      </div>
-    </div>
+    <div id="familyMembersContainer"></div>
 
-    <!-- 지출 그룹 -->
-    <div class="group-box" style="background:#fcfcfd;">
-      <div class="group-title" style="color:#e11d48;">📉 월 지출</div>
-      <div class="expense-grid">
-        <div>
-          <label>고정비</label>
-          <input class="expense-input" data-key="fixed" type="number" min="0" step="1" placeholder="예: 100 (만원)">
-          <div class="help">공과금, 보험료, 통신비 등</div>
-        </div>
-        <div>
-          <label>대출원리금</label>
-          <input class="expense-input" data-key="loanPrincipal" type="number" min="0" step="1" placeholder="예: 150 (만원)">
-          <div class="help">매월 상환하는 원리금</div>
-        </div>
-        <div>
-          <label>생활비</label>
-          <input class="expense-input" data-key="living" type="number" min="0" step="1" placeholder="예: 200 (만원)">
-          <div class="help">식비, 생필품 등</div>
-        </div>
-        <div>
-          <label>여행</label>
-          <input class="expense-input" data-key="travel" type="number" min="0" step="1" placeholder="예: 30 (만원)">
-          <div class="help">월평균 여행/휴가비</div>
-        </div>
-        <div>
-          <label>쇼핑</label>
-          <input class="expense-input" data-key="shopping" type="number" min="0" step="1" placeholder="예: 50 (만원)">
-          <div class="help">의류, 여가, 쇼핑 등</div>
-        </div>
-      </div>
+    <div class="actions" style="margin-top: 12px; justify-content: flex-start;">
+      <button type="button" class="add" id="addMemberBtn" style="height: 42px; font-size: 13px;">＋ 가족 구성원 추가</button>
     </div>
   </section>
 
@@ -373,34 +375,128 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
     </div>
   </section>
 
+  <!-- 🎯 관심 단지 (목표 부동산 설정) -->
+  <section class="card watchlist-section">
+    <div class="card-head">
+      <div>
+        <div class="eyebrow" style="color:#2563eb;">TARGET REAL ESTATE</div>
+        <div class="card-title">🎯 관심 단지 (목표 부동산 설정)</div>
+        <div class="subtitle">지역구, 단지명, 평형을 입력한 후 조회를 누르면 국토교통부 실거래가가 자동으로 입력됩니다.</div>
+      </div>
+    </div>
+
+    <div id="targetList"></div>
+
+    <div class="actions" style="margin-top: 12px; justify-content: flex-start;">
+      <button type="button" class="add" id="addTargetBtn" style="height: 42px; font-size: 13px;">＋ 관심 단지 추가</button>
+    </div>
+  </section>
+
   <div class="savebar">
     <button class="save" id="saveBtn">저장하기</button>
   </div>
 </div>
+
 <div class="toast" id="toast">입력 내용이 저장되었습니다.</div>
 
 <script>
+// --- 비밀번호 잠금 ---
+// 주의: 이 비밀번호는 이 파일 안의 자바스크립트 코드에 그대로 들어있어서
+// F12(개발자도구)로 소스를 열어보면 누구나 알아낼 수 있습니다.
+// "가족 외엔 실수로 안 열어봤으면" 하는 정도의 간단한 잠금이며, 진짜 보안이 필요한
+// 민감한 자산 정보라면 이 방식만으로는 충분하지 않습니다.
+const DASHBOARD_PASSWORD = '13131';
+const SESSION_KEY = 'assetDashboardUnlocked';
+
+const lockOverlay = document.getElementById('lockOverlay');
+const lockInput = document.getElementById('lockInput');
+const lockBtn = document.getElementById('lockBtn');
+const lockError = document.getElementById('lockError');
+const mainContent = document.getElementById('mainContent');
+
+function unlockDashboard() {
+  lockOverlay.style.display = 'none';
+  mainContent.style.display = 'block';
+  lockInput.value = '';
+  lockError.textContent = '';
+}
+
+function tryUnlock() {
+  if (lockInput.value === DASHBOARD_PASSWORD) {
+    // 같은 브라우저 탭을 쓰는 동안(탭을 닫기 전까지)은 다시 안 물어보도록 저장
+    try { sessionStorage.setItem(SESSION_KEY, '1'); } catch (e) {}
+    unlockDashboard();
+  } else {
+    lockError.textContent = '비밀번호가 올바르지 않습니다.';
+    lockInput.value = '';
+    lockInput.focus();
+  }
+}
+
+lockBtn.addEventListener('click', tryUnlock);
+lockInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') tryUnlock();
+});
+
+// 같은 탭에서 이미 한 번 풀었던 적이 있으면 다시 묻지 않음
+try {
+  if (sessionStorage.getItem(SESSION_KEY) === '1') {
+    unlockDashboard();
+  }
+} catch (e) {}
+
+// 인증키 설정 (Decode 키 사용)
+const API_KEY_DECODED = "Y/LN0P48yyzdrCPZxZF7gy9bBVSNJcyaYpbM417KGZcdRLCtCzAj5v+SLNIYJzOe+slRrOCz7M6oX2t0jsSaXA==";
+const API_ENDPOINT = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade";
+
+// 시군구 법정동 5자리 코드 매핑테이블
+const lawdCodeMap = {
+  "서울 강남구": "11680", "서울 서초구": "11650", "서울 송파구": "11710", "서울 마포구": "11440",
+  "서울 용산구": "11170", "서울 성동구": "11200", "서울 영등포구": "11560", "서울 노원구": "11350",
+  "경기 성남시 분당구": "41135", "경기 수원시 영통구": "41117", "경기 용인시 수지구": "41465",
+  "경기 하남시": "41450", "경기 화성시": "41590", "인천 연수구": "28185", "부산 해운대구": "26350"
+};
+
+/* [수정 1] 지역구 문자열을 정규화해서 비교하는 헬퍼.
+   "경기 용인시 수지구", "경기  용인시 수지구", "경기용인시수지구" 등
+   띄어쓰기 차이가 있어도 같은 지역으로 인식하도록 함.
+   매칭되는 지역이 없으면 null을 반환해서, 예전처럼 무조건 수지구로
+   조회되는 일이 없도록 함(대신 에러 메시지로 사용자에게 알림). */
+function normalizeRegionKey(str){
+  return (str||'').replace(/\s+/g, '').trim();
+}
+function lookupLawdCd(region){
+  const target = normalizeRegionKey(region);
+  for (const key in lawdCodeMap) {
+    if (normalizeRegionKey(key) === target) return lawdCodeMap[key];
+  }
+  return null;
+}
+
 const container = document.getElementById('properties');
 const addBtn = document.getElementById('addBtn');
 const count = document.getElementById('count');
 const toast = document.getElementById('toast');
 const autoTotalDeposit = document.getElementById('autoTotalDeposit');
-const familyIncomeContainer = document.getElementById('familyIncomeContainer');
-const addFamilyBtn = document.getElementById('addFamilyBtn');
+const familyMembersContainer = document.getElementById('familyMembersContainer');
+const addMemberBtn = document.getElementById('addMemberBtn');
 const familyFinanceContainer = document.getElementById('familyFinanceContainer');
 const addFinanceBtn = document.getElementById('addFinanceBtn');
-let num = 0;
+const targetList = document.getElementById('targetList');
+const addTargetBtn = document.getElementById('addTargetBtn');
+const saveBtn = document.getElementById('saveBtn');
 
-// 만원 단위를 억원 단위 텍스트로 변환하는 함수
+let num = 0;
+let targetNum = 0;
+let charts = {};
+
 function formatEok(amountInManwon) {
   if (isNaN(amountInManwon) || amountInManwon === 0) return '0 억원';
   const eok = amountInManwon / 10000;
   return `${eok.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} 억원`;
 }
 
-// STEP 2: 자산 총괄 요약 실시간 계산 함수
 function calculateSummary() {
-  // 1. 부동산 현재 가격 총합 및 투자 보증금 총합
   let totalRealEstateValue = 0;
   let totalInvestmentDeposit = 0;
   document.querySelectorAll('.property').forEach(card => {
@@ -414,10 +510,8 @@ function calculateSummary() {
     }
   });
 
-  // 투자 보증금 자동입력 필드 업데이트
   autoTotalDeposit.value = totalInvestmentDeposit.toLocaleString() + ' 만원';
 
-  // 2. 기본 금융 자산(현금, 예적금, CMA) 및 거주지 보증금 총합
   let totalBasicFinancialAssets = 0;
   let housingDeposit = 0;
   document.querySelectorAll('.asset-input').forEach(input => {
@@ -429,30 +523,21 @@ function calculateSummary() {
     }
   });
 
-  // 3. 구성원별 금융 총 자산 합산
   let totalFamilyFinanceAssets = 0;
   document.querySelectorAll('.finance-total').forEach(input => {
     totalFamilyFinanceAssets += parseFloat(input.value) || 0;
   });
 
-  // 4. 총 대출액 합계
   let totalLoans = 0;
   document.querySelectorAll('.group-box[data-loan]').forEach(group => {
     const val = parseFloat(group.querySelector('.loan-amount').value) || 0;
     totalLoans += val;
   });
 
-  // --- 수치 산출 ---
-  // 총 자산 = 보유부동산 현재가격 + 거주지 보증금 + 기본금융자산 + 구성원별 금융 총 자산
   const totalAssets = totalRealEstateValue + housingDeposit + totalBasicFinancialAssets + totalFamilyFinanceAssets;
-
-  // 총 부채 = 부채 항목 대출액 + 거주지 보증금 + 투자부동산 보증금
   const totalLiabilities = totalLoans + housingDeposit + totalInvestmentDeposit;
-
-  // 순 자산 = 총 자산 - 총 부채
   const netAssets = totalAssets - totalLiabilities;
 
-  // 비중 및 비율 계산
   let realEstateRatio = 0;
   let otherAssetsRatio = 0;
   if (totalAssets > 0) {
@@ -465,7 +550,6 @@ function calculateSummary() {
     debtRatio = ((totalLiabilities / totalAssets) * 100).toFixed(1);
   }
 
-  // UI 업데이트
   document.getElementById('summaryTotalAssets').textContent = formatEok(totalAssets);
   document.getElementById('summaryAssetsRatio').textContent = `부동산 ${realEstateRatio}% | 기타 ${otherAssetsRatio}%`;
 
@@ -475,7 +559,6 @@ function calculateSummary() {
   document.getElementById('summaryNetAssets').textContent = formatEok(netAssets);
 }
 
-// 보유 부동산 추가 함수 (구매가격 및 수익률 추가 반영)
 function addProperty(data={}) {
   if(num >= 10) return;
   num++;
@@ -572,7 +655,6 @@ function addProperty(data={}) {
   const useType = card.querySelector('.useType');
   const leaseFields = card.querySelector('.leaseFields');
 
-  // 부동산 수익률 계산 함수
   function calculatePropertyReturn() {
     const purchase = parseFloat(purchaseInput.value) || 0;
     const current = parseFloat(currentPriceInput.value) || 0;
@@ -580,7 +662,7 @@ function addProperty(data={}) {
     if (purchase > 0) {
       const rate = (((current - purchase) / purchase) * 100).toFixed(2);
       returnInput.value = `${rate} %`;
-      returnInput.style.color = rate >= 0 ? '#dc2626' : '#2563eb'; // 상승시 빨강, 하락시 파랑
+      returnInput.style.color = rate >= 0 ? '#dc2626' : '#2563eb';
     } else {
       returnInput.value = '0.00 %';
       returnInput.style.color = '#2563eb';
@@ -626,7 +708,7 @@ function update(){
 
 addBtn.onclick=()=>addProperty();
 
-// --- 구성원별 금융 자산 관리 ---
+// --- 금융 자산 관리 ---
 function updateFamilyFinanceTitles() {
   const items = familyFinanceContainer.querySelectorAll('.family-finance');
   items.forEach((box, idx) => {
@@ -713,182 +795,479 @@ function addFamilyFinance(data={}) {
 
 addFinanceBtn.onclick = () => addFamilyFinance();
 
-// --- 가족 소득 관리 ---
-function updateFamilyIncomeTitles() {
-  const items = familyIncomeContainer.querySelectorAll('.family-income');
-  items.forEach((box, idx) => {
-    const titleSpan = box.querySelector('.group-title-text');
-    titleSpan.textContent = `💵 가족소득 ${idx + 1}`;
+// --- 가족 구성원별 통합 소득 및 지출 ---
+function updateFamilyMemberTitles() {
+  const cards = familyMembersContainer.querySelectorAll('.member-card');
+  cards.forEach((card, idx) => {
+    const titleSpan = card.querySelector('.member-title-text');
+    titleSpan.textContent = `👤 가족 구성원 ${idx + 1}`;
     
-    const removeBtn = box.querySelector('.remove');
+    const removeBtn = card.querySelector('.remove');
     if (removeBtn) {
-      removeBtn.style.display = items.length === 1 ? 'none' : 'inline-block';
+      removeBtn.style.display = cards.length === 1 ? 'none' : 'inline-block';
     }
   });
 }
 
-function addFamilyIncome(data={}) {
-  const box = document.createElement('div');
-  box.className = 'group-box family-income';
-  box.innerHTML = `
-    <div class="group-title">
-      <span class="group-title-text">💵 가족소득</span>
+function addFamilyMember(data={}) {
+  const card = document.createElement('div');
+  card.className = 'member-card';
+  
+  const inc = data.income || {};
+  const exp = data.expense || {};
+
+  card.innerHTML = `
+    <div class="member-head">
+      <div class="member-title">
+        <span class="member-title-text">👤 가족 구성원</span>
+      </div>
       <button class="remove" type="button">삭제</button>
     </div>
-    <div class="income-grid-person">
-      <div>
-        <label>관계</label>
-        <input class="income-relation" placeholder="예: 본인, 배우자" value="${data.relation||''}">
+
+    <div style="max-width: 280px; margin-bottom: 20px;">
+      <label>구성원 관계</label>
+      <input class="member-relation" placeholder="예: 본인, 배우자, 자녀 등" value="${data.relation||''}">
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <div class="member-section-title" style="color:#2563eb;">📈 월 소득 (만원)</div>
+      <div class="income-grid">
+        <div>
+          <label>근로소득 (세후)</label>
+          <input class="income-work" type="number" min="0" step="1" placeholder="예: 350" value="${inc.work||''}">
+        </div>
+        <div>
+          <label>금융소득</label>
+          <input class="income-finance" type="number" min="0" step="1" placeholder="예: 50" value="${inc.finance||''}">
+        </div>
+        <div>
+          <label>기타소득</label>
+          <input class="income-etc" type="number" min="0" step="1" placeholder="예: 20" value="${inc.etc||''}">
+        </div>
       </div>
-      <div>
-        <label>근로소득 (세후)</label>
-        <input class="income-work" type="number" min="0" step="1" placeholder="예: 350 (만원)" value="${data.work||''}">
-      </div>
-      <div>
-        <label>금융소득</label>
-        <input class="income-finance" type="number" min="0" step="1" placeholder="예: 50 (만원)" value="${data.finance||''}">
-      </div>
-      <div>
-        <label>기타소득</label>
-        <input class="income-etc" type="number" min="0" step="1" placeholder="예: 20 (만원)" value="${data.etc||''}">
+    </div>
+
+    <div>
+      <div class="member-section-title" style="color:#e11d48;">📉 월 지출 (만원)</div>
+      <div class="expense-grid">
+        <div>
+          <label>고정비</label>
+          <input class="expense-fixed" type="number" min="0" step="1" placeholder="예: 100" value="${exp.fixed||''}">
+        </div>
+        <div>
+          <label>대출원리금</label>
+          <input class="expense-loan" type="number" min="0" step="1" placeholder="예: 150" value="${exp.loan||''}">
+        </div>
+        <div>
+          <label>생활비</label>
+          <input class="expense-living" type="number" min="0" step="1" placeholder="예: 200" value="${exp.living||''}">
+        </div>
+        <div>
+          <label>여행</label>
+          <input class="expense-travel" type="number" min="0" step="1" placeholder="예: 30" value="${exp.travel||''}">
+        </div>
+        <div>
+          <label>쇼핑</label>
+          <input class="expense-shopping" type="number" min="0" step="1" placeholder="예: 50" value="${exp.shopping||''}">
+        </div>
       </div>
     </div>
   `;
-  box.querySelector('.remove').onclick = () => {
-    box.remove();
-    updateFamilyIncomeTitles();
+
+  card.querySelector('.remove').onclick = () => {
+    card.remove();
+    updateFamilyMemberTitles();
   };
-  familyIncomeContainer.appendChild(box);
-  updateFamilyIncomeTitles();
+
+  familyMembersContainer.appendChild(card);
+  updateFamilyMemberTitles();
 }
 
-addFamilyBtn.onclick = () => addFamilyIncome();
+addMemberBtn.onclick = () => addFamilyMember();
 
-// 모든 입력 필드의 실시간 변경 감지 및 연동
-document.addEventListener('input', (e) => {
-  if (e.target.classList.contains('asset-input') || e.target.classList.contains('loan-amount')) {
-    calculateSummary();
+// 최근 12개월 연월 계산
+function getLast12MonthsYYYYMM() {
+  const result = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    result.push({ label: `${yyyy}-${mm}`, yyyymm: `${yyyy}${mm}` });
   }
-});
+  return result;
+}
 
-// 저장 버튼 클릭 이벤트
-document.getElementById('saveBtn').onclick=()=>{
-  // 1. 부동산 저장
-  const propertiesData=[...document.querySelectorAll('.property')].map((c,i)=>({
-    number:i+1,
-    type:c.querySelector('.type').value,
-    region:c.querySelector('.region').value,
-    name:c.querySelector('.name').value,
-    size:c.querySelector('.size').value,
-    purchasePrice:c.querySelector('.purchase-price').value,
-    price:c.querySelector('.price').value,
-    useType:c.querySelector('.useType').value,
-    deposit:c.querySelector('.deposit').value,
-    renewal:c.querySelector('.renewal').value,
-    expiry:c.querySelector('.expiry').value
-  }));
-  localStorage.setItem('targetProperties',JSON.stringify(propertiesData));
-
-  // 2. 자산 저장
-  const assetsData = {};
-  document.querySelectorAll('.asset-input').forEach(input => {
-    assetsData[input.dataset.key] = input.value;
-  });
-  localStorage.setItem('financialAssets', JSON.stringify(assetsData));
-
-  // 3. 구성원 금융 자산 저장
-  const financeGroups = document.querySelectorAll('.family-finance');
-  const familyFinanceData = [...financeGroups].map(fg => ({
-    relation: fg.querySelector('.finance-relation').value,
-    total: fg.querySelector('.finance-total').value,
-    principal: fg.querySelector('.finance-principal').value,
-    profit: fg.querySelector('.finance-profit').value
-  }));
-  localStorage.setItem('familyFinanceAssets', JSON.stringify(familyFinanceData));
-
-  // 4. 부채 저장
-  const liabilitiesData = {};
-  document.querySelectorAll('.group-box[data-loan]').forEach(group => {
-    const key = group.dataset.loan;
-    liabilitiesData[key] = {
-      amount: group.querySelector('.loan-amount').value,
-      rate: group.querySelector('.loan-rate').value,
-      type: group.querySelector('.loan-type').value
-    };
-  });
-  localStorage.setItem('financialLiabilities', JSON.stringify(liabilitiesData));
-
-  // 5. 월소득 및 지출 저장
-  const familyGroups = document.querySelectorAll('.family-income');
-  const incomeData = [...familyGroups].map(fg => ({
-    relation: fg.querySelector('.income-relation').value,
-    work: fg.querySelector('.income-work').value,
-    finance: fg.querySelector('.income-finance').value,
-    etc: fg.querySelector('.income-etc').value
-  }));
-
-  const expenseData = {};
-  document.querySelectorAll('.expense-input').forEach(input => {
-    expenseData[input.dataset.key] = input.value;
-  });
-
-  localStorage.setItem('monthlyIncomes', JSON.stringify(incomeData));
-  localStorage.setItem('monthlyExpenses', JSON.stringify(expenseData));
-
-  toast.classList.add('show');
-  setTimeout(()=>toast.classList.remove('show'),1800);
-};
-
-// 저장된 데이터 로드 (복원)
-const savedAssets=JSON.parse(localStorage.getItem('financialAssets')||'null');
-if(savedAssets){
-  document.querySelectorAll('.asset-input').forEach(input=>{
-    input.value=savedAssets[input.dataset.key]||'';
+function updateTargetTitles() {
+  const cards = targetList.querySelectorAll('.target-card');
+  cards.forEach((card, idx) => {
+    card.querySelector('.target-card-title').textContent = `📌 관심 단지 ${idx + 1}`;
   });
 }
 
-const savedFamilyFinance=JSON.parse(localStorage.getItem('familyFinanceAssets')||'null');
-if(savedFamilyFinance && savedFamilyFinance.length){
-  savedFamilyFinance.forEach(item => addFamilyFinance(item));
-} else {
-  addFamilyFinance({ relation: '본인' });
+/* [수정 2] 상태 메시지를 보여주는 헬퍼.
+   type: 'info' | 'success' | 'error' | 'warn' */
+function setTargetStatus(card, type, message) {
+  const el = card.querySelector('.target-status');
+  if (!el) return;
+  el.className = `target-status show ${type}`;
+  el.textContent = message;
 }
 
-const savedLiabilities=JSON.parse(localStorage.getItem('financialLiabilities')||'null');
-if(savedLiabilities){
-  document.querySelectorAll('.group-box[data-loan]').forEach(group=>{
-    const key = group.dataset.loan;
-    if(savedLiabilities[key]){
-      group.querySelector('.loan-amount').value = savedLiabilities[key].amount || '';
-      group.querySelector('.loan-rate').value = savedLiabilities[key].rate || '';
-      group.querySelector('.loan-type').value = savedLiabilities[key].type || '';
+function addTargetProperty(data = {}) {
+  targetNum++;
+  const cardId = `target-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  
+  const card = document.createElement('div');
+  card.className = 'group-box target-card';
+  card.id = cardId;
+  card.innerHTML = `
+    <div class="group-title">
+      <span class="target-card-title">📌 관심 단지 ${targetNum}</span>
+      <button class="remove" type="button">삭제</button>
+    </div>
+    <div class="target-grid">
+      <div>
+        <label>부동산 유형</label>
+        <select class="target-type">
+          <option>아파트</option>
+        </select>
+        <div class="help">예: 아파트</div>
+      </div>
+      <div>
+        <label>지역구</label>
+        <input class="target-region" placeholder="예: 경기 용인시 수지구" value="${data.region||'경기 용인시 수지구'}">
+        <div class="help">아래 지원 지역 목록 중 하나와 정확히 일치해야 합니다</div>
+      </div>
+      <div>
+        <label>단지명</label>
+        <input class="target-name" placeholder="예: 신정마을9" value="${data.name||'신정마을9'}">
+        <div class="help">예: 신정마을9, 은마 등 (공백 없이 입력)</div>
+      </div>
+      <div>
+        <label>평형 (전용㎡)</label>
+        <input class="target-size" type="number" placeholder="예: 59" value="${data.size||'59'}">
+        <div class="help">예: 59, 84 등 전용면적 숫자만 입력</div>
+      </div>
+      <div>
+        <label>최근 실거래가</label>
+        <input class="target-price" readonly placeholder="조회 버튼 클릭" style="font-weight: 700; color: #2563eb;">
+        <div class="help">자동 입력 (만원 단위)</div>
+      </div>
+      <div>
+        <label>목표 매수가</label>
+        <input class="target-goal" type="number" placeholder="예: 55000 (만원)" value="${data.goal||'55000'}">
+        <div class="help">예: 55000 (5억 5천만원 기준)</div>
+      </div>
+    </div>
+    <div style="margin-top: 14px;">
+      <button class="search-btn" style="width: 100%;" type="button">📡 국토교통부 실거래가 조회 및 차트 업데이트</button>
+    </div>
+
+    <!-- [수정] 조회 상태 / 에러 메시지 표시 영역 -->
+    <div class="target-status"></div>
+
+    <!-- 1년 실거래 추이 차트 -->
+    <div class="chart-box">
+      <div class="chart-header">
+        <div class="chart-title">📈 최근 1년 월별 평균 실거래가 추이 (만원)</div>
+      </div>
+      <div style="position: relative; height: 220px; width: 100%;">
+        <canvas id="canvas-${cardId}"></canvas>
+      </div>
+    </div>
+  `;
+
+  card.querySelector('.remove').onclick = () => {
+    if (charts[cardId]) {
+      charts[cardId].destroy();
+      delete charts[cardId];
+    }
+    card.remove();
+    updateTargetTitles();
+  };
+
+  const searchBtn = card.querySelector('.search-btn');
+  searchBtn.onclick = () => fetchMolitData(card, cardId);
+
+  targetList.appendChild(card);
+  updateTargetTitles();
+
+  initChart(cardId, [], []);
+}
+
+function initChart(cardId, labels, dataPoints) {
+  const canvas = document.getElementById(`canvas-${cardId}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  if (charts[cardId]) {
+    charts[cardId].destroy();
+  }
+
+  charts[cardId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.length ? labels : ['-'],
+      datasets: [{
+        label: '월별 평균 실거래가 (만원)',
+        data: dataPoints.length ? dataPoints : [0],
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#2563eb'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: value => `${(value / 10000).toFixed(1)}억`
+          }
+        }
+      }
     }
   });
 }
 
-const savedIncomes=JSON.parse(localStorage.getItem('monthlyIncomes')||'null');
-if(savedIncomes && savedIncomes.length){
-  savedIncomes.forEach(item => addFamilyIncome(item));
-} else {
-  addFamilyIncome({ relation: '본인' });
+/* [수정 4] 프록시 하나(allorigins)에만 의존하지 않고 여러 개를 순서대로 시도.
+   각 프록시는 응답 형태가 달라서(JSON으로 감싸거나, 원본 그대로 주거나)
+   extract 함수로 "실제 XML 문자열"을 뽑아내는 방법을 각각 정의해둔다.
+   하나가 실패(Failed to fetch, 타임아웃, 빈 응답 등)하면 다음 프록시로 자동 전환. */
+const CORS_PROXIES = [
+  {
+    name: 'allorigins',
+    build: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    extract: async (response) => {
+      const json = await response.json();
+      return json.contents;
+    }
+  },
+  {
+    name: 'corsproxy.io',
+    build: (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    extract: async (response) => response.text()
+  },
+  {
+    name: 'codetabs',
+    build: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    extract: async (response) => response.text()
+  }
+];
+
+async function fetchViaProxies(targetUrl) {
+  const failReasons = [];
+
+  for (const proxy of CORS_PROXIES) {
+    try {
+      // 프록시 하나당 8초 안에 응답이 없으면 다음 프록시로 넘어감
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const response = await fetch(proxy.build(targetUrl), { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        failReasons.push(`${proxy.name}: HTTP ${response.status}`);
+        continue;
+      }
+
+      const xmlText = await proxy.extract(response);
+      if (!xmlText || !xmlText.includes('<')) {
+        failReasons.push(`${proxy.name}: 빈 응답 또는 XML이 아님`);
+        continue;
+      }
+
+      return xmlText; // 성공한 첫 프록시의 결과를 바로 사용
+    } catch (e) {
+      // Failed to fetch, 타임아웃(AbortError) 등 — 이 프록시는 포기하고 다음으로
+      failReasons.push(`${proxy.name}: ${e.name === 'AbortError' ? '응답 시간 초과' : (e.message || '연결 실패')}`);
+    }
+  }
+
+  throw new Error(`모든 프록시 연결 실패 (${failReasons.join(' / ')})`);
 }
 
-const savedExpenses=JSON.parse(localStorage.getItem('monthlyExpenses')||'null');
-if(savedExpenses){
-  document.querySelectorAll('.expense-input').forEach(input=>{
-    input.value=savedExpenses[input.dataset.key]||'';
-  });
+/* 하나의 월(月)만 조회하는 함수.
+   - 위 fetchViaProxies로 여러 프록시를 순서대로 시도
+   - 국토부 API가 에러 XML(resultCode != 000)을 주면 그 메시지를 반환 */
+async function fetchOneMonth(lawdCd, yyyymm) {
+  const targetUrl = `${API_ENDPOINT}?serviceKey=${encodeURIComponent(API_KEY_DECODED)}&LAWD_CD=${lawdCd}&DEAL_YMD=${yyyymm}&numOfRows=1000&pageNo=1`;
+
+  const xmlText = await fetchViaProxies(targetUrl);
+
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+  // XML 파싱 자체가 실패한 경우 (예: 프록시가 HTML 에러 페이지를 반환)
+  if (xmlDoc.querySelector('parsererror')) {
+    throw new Error('응답을 해석할 수 없습니다. (형식이 XML이 아님)');
+  }
+
+  // 국토교통부 API가 에러 코드를 반환한 경우 (예: 서비스키 미승인, 키 오류 등)
+  const resultCode = xmlDoc.querySelector('resultCode')?.textContent;
+  const resultMsg = xmlDoc.querySelector('resultMsg')?.textContent;
+  if (resultCode && resultCode !== '00' && resultCode !== '000') {
+    throw new Error(`공공데이터포털 오류: ${resultMsg || resultCode}`);
+  }
+
+  const items = xmlDoc.querySelectorAll('item');
+  return items;
 }
 
-const savedProperties=JSON.parse(localStorage.getItem('targetProperties')||'null');
-if(savedProperties && savedProperties.length){
-  savedProperties.forEach(x=>addProperty(x));
-}else {
-  addProperty();
+// 국토교통부 Open API 정밀 수집 알고리즘 (AllOrigins 프록시 우회)
+async function fetchMolitData(card, cardId) {
+  const region = card.querySelector('.target-region').value.trim();
+  const rawAptName = card.querySelector('.target-name').value.trim();
+  const targetAptKey = rawAptName.replace(/\s+/g, '').replace(/아파트|단지/g, '');
+  const targetSize = parseFloat(card.querySelector('.target-size').value) || 0;
+  const priceInput = card.querySelector('.target-price');
+  const searchBtn = card.querySelector('.search-btn');
+
+  // [수정] 지역이 매핑 목록에 없으면 조용히 다른 지역으로 넘어가지 않고 바로 알려줌
+  const lawdCd = lookupLawdCd(region);
+  if (!lawdCd) {
+    setTargetStatus(card, 'error',
+      `"${region}"은(는) 지원하는 지역 목록에 없습니다. 아래 목록 중 하나와 똑같이 입력해주세요: ${Object.keys(lawdCodeMap).join(', ')}`);
+    return;
+  }
+
+  const months = getLast12MonthsYYYYMM();
+
+  searchBtn.disabled = true;
+  searchBtn.textContent = '⏳ 데이터 수집 중...';
+  setTargetStatus(card, 'info', '국토교통부 실거래가를 조회하는 중입니다... (최대 12회 순차 요청, 시간이 조금 걸릴 수 있어요)');
+
+  const labels = [];
+  const monthlyAverages = [];
+  let latestPrice = 0;
+  let errorCount = 0;
+  let lastErrorMessage = '';
+
+  try {
+    // [수정] Promise.all로 12개월을 한꺼번에 요청하면 프록시 서버가
+    // 요청을 거부(rate limit)하는 경우가 많아, 한 달씩 순서대로 요청하도록 변경.
+    for (let i = 0; i < months.length; i++) {
+      const m = months[i];
+      setTargetStatus(card, 'info', `조회 중... (${i + 1}/${months.length}개월, ${m.label})`);
+
+      try {
+        const items = await fetchOneMonth(lawdCd, m.yyyymm);
+
+        let totalSum = 0;
+        let count = 0;
+        let monthLatest = 0;
+
+        items.forEach(item => {
+          const aptNameTag = item.querySelector('aptNm') || item.querySelector('아파트');
+          const aptName = (aptNameTag?.textContent || '').replace(/\s+/g, '');
+
+          const areaTag = item.querySelector('excluUseAr') || item.querySelector('전용면적');
+          const area = parseFloat(areaTag?.textContent || '0');
+
+          const amountTag = item.querySelector('dealAmount') || item.querySelector('거래금액');
+          const amountStr = amountTag?.textContent || '0';
+          const amount = parseInt(amountStr.replace(/,/g, '').trim(), 10);
+
+          const isNameMatch = !targetAptKey || aptName.includes(targetAptKey) || targetAptKey.includes(aptName);
+          const isSizeMatch = targetSize === 0 || Math.abs(area - targetSize) <= 12;
+
+          if (isNameMatch && isSizeMatch && amount > 0) {
+            totalSum += amount;
+            count++;
+            monthLatest = amount;
+          }
+        });
+
+        labels.push(m.label);
+        monthlyAverages.push(count > 0 ? Math.round(totalSum / count) : null);
+        if (monthLatest > 0) latestPrice = monthLatest;
+
+      } catch (monthErr) {
+        // [수정] 에러를 조용히 삼키지 않고 기록해서 마지막에 사용자에게 알림
+        errorCount++;
+        lastErrorMessage = monthErr.message || String(monthErr);
+        labels.push(m.label);
+        monthlyAverages.push(null);
+      }
+
+      // 프록시 서버 과다 요청 방지를 위한 약간의 텀
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    // 실거래 데이터가 존재하는 이전 시점의 값을 보간 처리
+    let lastValidVal = null;
+    for (let i = 0; i < monthlyAverages.length; i++) {
+      if (monthlyAverages[i] !== null) {
+        lastValidVal = monthlyAverages[i];
+      } else if (lastValidVal !== null) {
+        monthlyAverages[i] = lastValidVal;
+      }
+    }
+
+    initChart(cardId, labels, monthlyAverages);
+
+    if (latestPrice > 0) {
+      priceInput.value = `${latestPrice.toLocaleString()} 만원`;
+      if (errorCount === 0) {
+        setTargetStatus(card, 'success', `조회 완료! 총 ${months.length}개월 중 ${months.length - errorCount}개월 데이터를 정상적으로 가져왔습니다.`);
+      } else {
+        setTargetStatus(card, 'warn', `조회는 완료했지만 ${errorCount}개월은 실패했습니다. (원인: ${lastErrorMessage}) 나머지 데이터로 차트를 표시합니다.`);
+      }
+    } else {
+      priceInput.value = '조회 조건에 맞는 데이터 없음';
+      if (errorCount === months.length) {
+        // 12개월 전부 실패 -> 대부분 프록시/서비스키 문제
+        setTargetStatus(card, 'error',
+          `모든 월 조회에 실패했습니다. 원인: ${lastErrorMessage}. ` +
+          `세 개의 무료 프록시(allorigins, corsproxy.io, codetabs)를 모두 시도했지만 전부 실패했습니다. ` +
+          `사내망/방화벽이 외부 프록시 도메인을 막고 있을 수도 있으니, 다른 네트워크(예: 휴대폰 테더링)에서도 한 번 시도해보세요.`);
+      } else {
+        setTargetStatus(card, 'warn',
+          `단지명("${rawAptName}")과 평형(${targetSize}㎡) 조건에 맞는 실거래 내역을 찾지 못했습니다. 단지명 표기(공백 등)나 평형을 다시 확인해보세요.`);
+      }
+    }
+
+  } catch (err) {
+    console.error(err);
+    setTargetStatus(card, 'error', `예상치 못한 오류가 발생했습니다: ${err.message || err}`);
+  } finally {
+    searchBtn.disabled = false;
+    searchBtn.textContent = '📡 국토교통부 실거래가 조회 및 차트 업데이트';
+  }
 }
 
-// 최초 로드시 요약 계산
-calculateSummary();
+addTargetBtn.onclick = () => addTargetProperty();
+
+// --- 저장 및 이벤트 초기화 ---
+document.querySelectorAll('.asset-input').forEach(input => {
+  input.addEventListener('input', calculateSummary);
+});
+
+document.querySelectorAll('.loan-amount').forEach(input => {
+  input.addEventListener('input', calculateSummary);
+});
+
+saveBtn.onclick = () => {
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+};
+
+window.onload = function() {
+  addProperty({ region: '서울시 강남구', name: '은마아파트', size: '84㎡', purchasePrice: 200000, price: 250000, type: '아파트', useType: '실거주' });
+  addFamilyFinance({ relation: '본인', total: 5000, principal: 4000, profit: 1000 });
+  addFamilyMember({ relation: '본인', income: { work: 450, finance: 20, etc: 0 }, expense: { fixed: 120, loan: 150, living: 180, travel: 30, shopping: 40 } });
+  addTargetProperty({ region: '경기 용인시 수지구', name: '신정마을9', size: '59', goal: '55000' });
+  
+  calculateSummary();
+};
 </script>
 </body>
 </html>
