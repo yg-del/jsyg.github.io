@@ -486,6 +486,11 @@ const API_ENDPOINT = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTM
 // 내 Cloudflare Worker 주소 (직접 만든 안정적인 중계 서버)
 const CLOUDFLARE_WORKER_URL = "https://dry-feather-ab0e.ksn3152.workers.dev";
 
+// PC/휴대폰 등 여러 기기에서 같은 데이터를 보기 위한 동기화 키.
+// 이 값을 아는 사람은 누구나 내 대시보드 데이터를 읽고 쓸 수 있으니,
+// 잠금 비밀번호(13131)와는 별개로 추측하기 어려운 값으로 바꾸는 걸 권장합니다.
+const SYNC_KEY = "yg-asset-dashboard-13131";
+
 // 시군구 법정동 5자리 코드 매핑테이블
 const lawdCodeMap = {
   // 서울특별시 (25개 구)
@@ -1822,26 +1827,74 @@ function restoreState(state) {
   calculateSummary();
 }
 
-saveBtn.onclick = () => {
-  try {
-    const state = collectState();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    toast.textContent = '입력 내용이 이 브라우저에 저장되었습니다.';
-  } catch (e) {
-    console.error(e);
-    toast.textContent = '저장에 실패했습니다: ' + (e.message || e);
-  }
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2500);
-};
-
 // 안전장치: 저장 버튼을 깜빡 잊고 탭을 닫거나 다른 페이지로 이동해도
-// 마지막 상태가 자동으로 한 번 더 저장되도록 함
+// 마지막 상태가 자동으로 한 번 더 저장되도록 함 (로컬 저장까지만; 클라우드 전송은
+// beforeunload 시점엔 비동기 요청이 끝까지 보장되지 않아 생략)
 window.addEventListener('beforeunload', () => {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); } catch (e) {}
 });
 
-window.onload = function() {
+/* [신규] Cloudflare Worker + KV를 이용한 기기 간 동기화 */
+async function pushToCloud(state) {
+  const res = await fetch(`${CLOUDFLARE_WORKER_URL}/sync?key=${encodeURIComponent(SYNC_KEY)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state)
+  });
+  if (!res.ok) throw new Error(`클라우드 저장 실패 (HTTP ${res.status})`);
+}
+
+async function pullFromCloud() {
+  const res = await fetch(`${CLOUDFLARE_WORKER_URL}/sync?key=${encodeURIComponent(SYNC_KEY)}`);
+  if (res.status === 404) return null; // 아직 저장된 데이터 없음 (최초 1회)
+  if (!res.ok) throw new Error(`클라우드 불러오기 실패 (HTTP ${res.status})`);
+  return res.json();
+}
+
+saveBtn.onclick = async () => {
+  const state = collectState();
+
+  // 1) 이 브라우저에 즉시 로컬 저장 (클라우드가 실패해도 최소한 이건 남도록)
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error(e);
+  }
+
+  // 2) 클라우드(Cloudflare Worker + KV)에도 저장 -> 다른 기기에서도 보이게 됨
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = '⏳ 저장 중...';
+
+  try {
+    await pushToCloud(state);
+    toast.textContent = '☁️ 저장 완료! (이 기기 + 클라우드에 모두 저장됨)';
+  } catch (e) {
+    console.error(e);
+    toast.textContent = `이 기기에는 저장됐지만, 클라우드 저장에는 실패했습니다: ${e.message}`;
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
+  }
+
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+};
+
+window.onload = async function() {
+  // 1) 먼저 클라우드에서 최신 데이터를 받아오도록 시도 (다른 기기에서 저장한 내용 포함)
+  try {
+    const cloudState = await pullFromCloud();
+    if (cloudState) {
+      restoreState(cloudState);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudState)); } catch (e) {}
+      return;
+    }
+  } catch (e) {
+    console.error('클라우드에서 불러오기 실패, 이 기기에 저장된 데이터로 대체합니다:', e);
+  }
+
+  // 2) 클라우드에 데이터가 없거나(최초 1회) 연결에 실패했으면, 이 기기의 로컬 저장 확인
   const savedRaw = localStorage.getItem(STORAGE_KEY);
   if (savedRaw) {
     try {
@@ -1850,11 +1903,10 @@ window.onload = function() {
       return;
     } catch (e) {
       console.error('저장된 데이터를 불러오지 못했습니다:', e);
-      // 저장된 데이터가 깨져있으면 아래의 기본 예시 데이터로 진행
     }
   }
 
-  // 저장된 데이터가 없을 때만 보여주는 최초 예시 데이터
+  // 3) 그마저도 없을 때만 보여주는 최초 예시 데이터
   addProperty({ region: '서울시 강남구', name: '은마아파트', size: '84㎡', purchasePrice: 200000, price: 250000, type: '아파트', useType: '실거주' });
   addFamilyFinance({ relation: '본인', total: 5000, principal: 4000, profit: 1000 });
   addFamilyMember({ relation: '본인', income: { work: 450, finance: 20, etc: 0 }, expense: { fixed: 120, loan: 150, living: 180, travel: 30, shopping: 40 } });
