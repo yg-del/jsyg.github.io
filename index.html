@@ -63,7 +63,7 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
 .summary-item-sub{font-size:12px;color:#94a3b8;margin-top:8px;line-height:1.4}
 
 /* 관심 단지 전용 차트 및 검색 박스 스타일 */
-.target-grid{display:grid;grid-template-columns:1fr 1.2fr 1.4fr 1fr 1fr 1fr;gap:16px}
+.target-grid{display:grid;grid-template-columns:1fr 1.2fr 1.4fr 1fr 1fr;gap:16px}
 .chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-top:20px}
 .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .chart-title{font-size:14px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px}
@@ -78,6 +78,33 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
 .target-status.success{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
 .target-status.error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
 .target-status.warn{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
+
+/* 단지명 자동완성 검색 */
+.target-name-suggestions{position:absolute;left:0;right:0;top:74px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:220px;overflow-y:auto;z-index:20;display:none}
+.target-name-suggestions.show{display:block}
+.target-name-suggestions .suggestion-item{padding:10px 12px;font-size:13.5px;cursor:pointer;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;gap:8px}
+.target-name-suggestions .suggestion-item:last-child{border-bottom:0}
+.target-name-suggestions .suggestion-item:hover{background:#eff6ff}
+.target-name-suggestions .suggestion-count{color:#94a3b8;font-size:11.5px;white-space:nowrap}
+.target-name-suggestions .suggestion-empty{padding:10px 12px;font-size:13px;color:#94a3b8}
+
+/* 갈아타기 계산 */
+.upgrade-box{margin-top:16px;padding-top:16px;border-top:1px dashed #cbd5e1}
+.upgrade-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#334155;margin-bottom:12px;cursor:pointer}
+.upgrade-checkbox input{width:auto;height:auto}
+.upgrade-btn{width:100%;height:46px;border:0;border-radius:10px;background:#0f172a;color:#fff;font-weight:800;font-size:14px;cursor:pointer}
+.upgrade-btn:hover{background:#1e293b}
+.upgrade-btn:disabled{background:#94a3b8;cursor:not-allowed}
+.upgrade-result{margin-top:14px;display:none}
+.upgrade-result.show{display:block}
+.upgrade-result .ur-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9;font-size:13.5px}
+.upgrade-result .ur-row:last-of-type{border-bottom:0}
+.upgrade-result .ur-label{color:#64748b}
+.upgrade-result .ur-value{font-weight:700;color:#0f172a}
+.upgrade-result .ur-highlight{background:#f8fafc;border-radius:10px;padding:12px 14px;margin-top:8px;font-size:14px;font-weight:800}
+.upgrade-result .ur-highlight.positive{color:#047857;background:#ecfdf5}
+.upgrade-result .ur-highlight.negative{color:#b91c1c;background:#fef2f2}
+.upgrade-result .ur-note{font-size:11.5px;color:#94a3b8;line-height:1.5;margin-top:10px}
 
 @media(max-width:1000px){.grid, .target-grid{grid-template-columns:1fr 1fr 1fr}}
 @media(max-width:900px){.summary-grid{grid-template-columns:1fr}.expense-grid{grid-template-columns:1fr 1fr 1fr}.finance-grid-person{grid-template-columns:1fr 1fr}}
@@ -517,6 +544,8 @@ const saveBtn = document.getElementById('saveBtn');
 let num = 0;
 let targetNum = 0;
 let charts = {};
+let latestAssetSummary = { totalAssets: 0, totalLiabilities: 0, netAssets: 0 };
+let hasExistingHome = false;
 
 function formatEok(amountInManwon) {
   if (isNaN(amountInManwon) || amountInManwon === 0) return '0 억원';
@@ -585,6 +614,116 @@ function calculateSummary() {
   document.getElementById('summaryDebtRatio').textContent = `부채비율 ${debtRatio}%`;
 
   document.getElementById('summaryNetAssets').textContent = formatEok(netAssets);
+
+  // [신규] "갈아타기 계산" 기능에서 재사용할 수 있도록 최신 자산 요약을 저장해둠
+  latestAssetSummary = { totalAssets, totalLiabilities, netAssets };
+
+  // 이미 실거주 중인 부동산이 있는지 확인 (갈아타기 계산 시 생애최초 여부 자동 판단에 사용)
+  hasExistingHome = Array.from(document.querySelectorAll('.property'))
+    .some(card => card.querySelector('.useType').value === '실거주');
+}
+
+/* ============================================================
+   [신규] 갈아타기 계산 — 2026년 기준 취득세·중개수수료·자금 계산
+   ※ 아래 세율/요율은 2026년 기준 일반적인 기준이며, 실제 세액은
+   지방교육세·농어촌특별세, 조정대상지역 여부, 다주택 중과 여부에 따라
+   달라질 수 있습니다. 참고용 추정치이며 세무·재무 자문이 아닙니다.
+   ============================================================ */
+
+// 취득세 계산 (금액 단위: 만원). 1주택자(또는 일시적 2주택 특례) 세율 기준.
+// 6억 이하 1%, 6~9억 슬라이딩(1~3%), 9억 초과 3%. 생애최초는 12억 이하 시 200만원 감면.
+function calcAcquisitionTax(priceManwon, isFirstTime) {
+  const eok = priceManwon / 10000; // 억 단위로 환산
+  let rate;
+  if (eok <= 6) {
+    rate = 0.01;
+  } else if (eok <= 9) {
+    rate = (eok * 2 / 3 - 3) / 100;
+  } else {
+    rate = 0.03;
+  }
+
+  let tax = priceManwon * rate;
+
+  let firstTimeDiscount = 0;
+  if (isFirstTime && eok <= 12) {
+    firstTimeDiscount = Math.min(tax, 200); // 200만원 한도
+    tax -= firstTimeDiscount;
+  }
+
+  return { rate, tax: Math.round(tax), firstTimeDiscount: Math.round(firstTimeDiscount) };
+}
+
+// 부동산 중개수수료(매매 기준, 편도) 계산. 2026년 상한요율표 기준, 부가세 10% 별도 표시.
+function calcBrokerageFee(priceManwon) {
+  const bands = [
+    { max: 5000, rate: 0.006, cap: 25 },
+    { max: 20000, rate: 0.005, cap: 80 },
+    { max: 90000, rate: 0.004, cap: null },
+    { max: 120000, rate: 0.005, cap: null },
+    { max: 150000, rate: 0.006, cap: null },
+    { max: Infinity, rate: 0.007, cap: null }
+  ];
+  const band = bands.find(b => priceManwon < b.max);
+  let fee = priceManwon * band.rate;
+  if (band.cap !== null) fee = Math.min(fee, band.cap);
+
+  const feeWithVat = fee * 1.1;
+  return { rate: band.rate, fee: Math.round(fee), feeWithVat: Math.round(feeWithVat) };
+}
+
+function calculateUpgrade(card) {
+  const resultBox = card.querySelector('.upgrade-result');
+  const priceText = card.querySelector('.target-price').value;
+  const price = parseFloat((priceText || '').replace(/[^0-9.]/g, ''));
+  const isFirstTime = card.querySelector('.target-first-time').checked;
+
+  if (!price || price <= 0) {
+    resultBox.className = 'upgrade-result show';
+    resultBox.innerHTML = `<div class="ur-note" style="color:#b91c1c;">먼저 "국토교통부 실거래가 조회"를 실행해서 최근 실거래가를 확인해주세요.</div>`;
+    return;
+  }
+
+  const eok = price / 10000;
+  const { rate: taxRate, tax: acquisitionTax, firstTimeDiscount } = calcAcquisitionTax(price, isFirstTime);
+  const { rate: brokerRate, fee: brokerFee, feeWithVat: brokerFeeWithVat } = calcBrokerageFee(price);
+
+  const totalRequired = price + acquisitionTax + brokerFeeWithVat;
+  const netAssets = latestAssetSummary.netAssets;
+  const shortfall = totalRequired - netAssets;
+
+  // LTV 참고치 (소득 요건 등을 보는 DSR과 별개로, 집값 대비 대출 한도 상한을 참고용으로 계산)
+  const ltvRate = isFirstTime ? 0.80 : 0.70;
+  let ltvCeiling = price * ltvRate;
+  if (isFirstTime) ltvCeiling = Math.min(ltvCeiling, 60000); // 생애최초 한도: 최대 6억(=60000만원)
+
+  const existingHomeNote = hasExistingHome
+    ? `현재 "실거주" 부동산이 이미 등록되어 있어, 기존 집을 3년 내 처분하는 <b>일시적 2주택 특례(1주택 세율)</b>를 적용해 계산했습니다.`
+    : `현재 등록된 실거주 부동산이 없어, 무주택자 기준으로 계산했습니다.`;
+
+  resultBox.className = 'upgrade-result show';
+  resultBox.innerHTML = `
+    <div class="ur-row"><span class="ur-label">매수 예정가 (최근 실거래가 기준)</span><span class="ur-value">${price.toLocaleString()} 만원</span></div>
+    <div class="ur-row"><span class="ur-label">취득세 (세율 ${(taxRate*100).toFixed(2)}%${firstTimeDiscount > 0 ? `, 생애최초 ${firstTimeDiscount}만원 감면 반영` : ''})</span><span class="ur-value">${acquisitionTax.toLocaleString()} 만원</span></div>
+    <div class="ur-row"><span class="ur-label">부동산 중개수수료 (요율 ${(brokerRate*100).toFixed(2)}%, 부가세 10% 포함)</span><span class="ur-value">${brokerFeeWithVat.toLocaleString()} 만원</span></div>
+    <div class="ur-row"><span class="ur-label"><b>총 필요자금</b> (매수가+취득세+중개수수료)</span><span class="ur-value">${Math.round(totalRequired).toLocaleString()} 만원</span></div>
+    <div class="ur-row"><span class="ur-label">현재 내 순자산 (자산 총괄 요약 기준)</span><span class="ur-value">${Math.round(netAssets).toLocaleString()} 만원</span></div>
+
+    <div class="ur-highlight ${shortfall > 0 ? 'negative' : 'positive'}">
+      ${shortfall > 0
+        ? `대출 등으로 추가 조달이 필요한 금액: 약 ${Math.round(shortfall).toLocaleString()} 만원`
+        : `현재 순자산만으로 충당 가능 (여유자금 약 ${Math.round(-shortfall).toLocaleString()} 만원)`}
+    </div>
+
+    <div class="ur-note">
+      ${existingHomeNote}<br><br>
+      <b>참고: 2026년 대출 규제 개요</b><br>
+      · LTV(주택담보대출비율) 참고 한도: ${isFirstTime ? '생애최초 80% (최대 6억원)' : '1주택자 기준 70%'} → 이 가격 기준 약 ${Math.round(ltvCeiling).toLocaleString()}만원<br>
+      · DSR(총부채원리금상환비율): 1금융권 40%, 2금융권 50% 한도이며, 2026년 스트레스 DSR 3단계 시행으로 실제 대출 가능액은 위 LTV 한도보다 더 낮게 나올 수 있습니다.<br>
+      · 실제 대출 가능 금액은 소득, 기존 대출, 규제지역 여부, 은행별 정책에 따라 달라지므로 반드시 은행 상담으로 확인하세요.<br><br>
+      ※ 위 취득세·중개수수료는 참고용 추정치입니다. 취득세는 지방교육세·농어촌특별세가 별도로 조금 더 붙을 수 있고, 다주택 중과·조정대상지역 여부에 따라 세율이 달라질 수 있습니다. 등기비용(법무사 비용 등)은 포함되지 않았습니다. 정확한 금액은 위택스와 세무사·은행 상담으로 확인하시길 권합니다. 이 계산기는 세무·법률·재무 자문을 대체하지 않습니다.
+    </div>
+  `;
 }
 
 function addProperty(data={}) {
@@ -975,12 +1114,11 @@ function addTargetProperty(data = {}) {
         </select>
         <div class="help">선택 후 "단지 목록 불러오기"를 눌러주세요</div>
       </div>
-      <div>
+      <div style="position: relative;">
         <label>단지명</label>
-        <select class="target-name" disabled>
-          <option value="">먼저 단지 목록을 불러오세요</option>
-        </select>
-        <div class="help">실제 실거래 내역에 있는 단지명 목록입니다</div>
+        <input class="target-name-input" type="text" placeholder="먼저 단지 목록을 불러오세요" disabled autocomplete="off">
+        <div class="target-name-suggestions"></div>
+        <div class="help">2글자 이상 입력하면 일치하는 단지가 아래에 표시됩니다</div>
       </div>
       <div>
         <label>평형 (전용㎡)</label>
@@ -994,11 +1132,6 @@ function addTargetProperty(data = {}) {
         <input class="target-price" readonly placeholder="조회 버튼 클릭" style="font-weight: 700; color: #2563eb;">
         <div class="help">자동 입력 (만원 단위)</div>
       </div>
-      <div>
-        <label>목표 매수가</label>
-        <input class="target-goal" type="number" placeholder="예: 55000 (만원)" value="${data.goal||'55000'}">
-        <div class="help">예: 55000 (5억 5천만원 기준)</div>
-      </div>
     </div>
     <div style="margin-top: 14px; display: flex; gap: 10px;">
       <button class="load-list-btn" style="flex: 1;" type="button">📋 단지 목록 불러오기</button>
@@ -1007,6 +1140,16 @@ function addTargetProperty(data = {}) {
 
     <!-- [수정] 조회 상태 / 에러 메시지 표시 영역 -->
     <div class="target-status"></div>
+
+    <!-- [신규] 갈아타기 계산 -->
+    <div class="upgrade-box">
+      <label class="upgrade-checkbox">
+        <input type="checkbox" class="target-first-time">
+        생애최초 주택 구입입니다 (본인·배우자 모두 주택 보유 이력 없음)
+      </label>
+      <button class="upgrade-btn" type="button">🔄 갈아타기 계산 (최근 실거래가 기준)</button>
+      <div class="upgrade-result"></div>
+    </div>
 
     <!-- 1년 실거래 추이 차트 -->
     <div class="chart-box">
@@ -1031,26 +1174,81 @@ function addTargetProperty(data = {}) {
   // 단지명 -> 실제 거래된 평형 목록을 기억해두는 저장소 (카드별로 따로 관리)
   card._complexSizeMap = {};
 
-  const nameSelect = card.querySelector('.target-name');
+  const nameInput = card.querySelector('.target-name-input');
+  const suggestionBox = card.querySelector('.target-name-suggestions');
   const sizeSelect = card.querySelector('.target-size');
 
-  nameSelect.addEventListener('change', () => {
-    const sizes = card._complexSizeMap[nameSelect.value] || [];
+  function applySelectedComplex(name) {
+    nameInput.value = name;
+    suggestionBox.classList.remove('show');
+
+    const sizes = card._complexSizeMap[name] || [];
     if (sizes.length === 0) {
       sizeSelect.innerHTML = `<option value="">거래 내역 없음</option>`;
       sizeSelect.disabled = true;
       return;
     }
-    sizeSelect.innerHTML = sizes
-      .map(s => `<option value="${s}">${s}㎡</option>`)
-      .join('');
+    sizeSelect.innerHTML = sizes.map(s => `<option value="${s}">${s}㎡</option>`).join('');
     sizeSelect.disabled = false;
+  }
+
+  function renderSuggestions(query) {
+    const names = Object.keys(card._complexSizeMap);
+    if (names.length === 0) return;
+
+    const normalizedQuery = query.replace(/\s+/g, '').toLowerCase();
+    const matches = names
+      .filter(n => n.replace(/\s+/g, '').toLowerCase().includes(normalizedQuery))
+      .slice(0, 30); // 너무 많으면 스크롤이 길어지니 상위 30개만
+
+    if (matches.length === 0) {
+      suggestionBox.innerHTML = `<div class="suggestion-empty">일치하는 단지가 없습니다</div>`;
+    } else {
+      suggestionBox.innerHTML = matches.map(n => {
+        const sizeCount = card._complexSizeMap[n].length;
+        return `<div class="suggestion-item" data-name="${n}"><span>${n}</span><span class="suggestion-count">${sizeCount}개 평형</span></div>`;
+      }).join('');
+
+      suggestionBox.querySelectorAll('.suggestion-item').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // input의 blur보다 클릭이 먼저 처리되도록
+          applySelectedComplex(el.dataset.name);
+        });
+      });
+    }
+
+    suggestionBox.classList.add('show');
+  }
+
+  nameInput.addEventListener('input', () => {
+    // 이름을 직접 수정하면, 이전에 선택했던 평형 목록은 더 이상 유효하지 않으므로 초기화
+    sizeSelect.innerHTML = `<option value="">단지를 먼저 선택하세요</option>`;
+    sizeSelect.disabled = true;
+
+    if (nameInput.disabled || Object.keys(card._complexSizeMap).length === 0) return;
+    renderSuggestions(nameInput.value.trim());
+  });
+
+  nameInput.addEventListener('focus', () => {
+    if (!nameInput.disabled && Object.keys(card._complexSizeMap).length > 0) {
+      renderSuggestions(nameInput.value.trim());
+    }
+  });
+
+  nameInput.addEventListener('blur', () => {
+    // mousedown에서 이미 선택 처리를 했으므로, blur 시에는 그냥 목록만 닫음
+    setTimeout(() => suggestionBox.classList.remove('show'), 100);
   });
 
   card.querySelector('.load-list-btn').onclick = () => loadComplexList(card, cardId);
 
   const searchBtn = card.querySelector('.search-btn');
   searchBtn.onclick = () => fetchMolitData(card, cardId);
+
+  // 이미 실거주 중인 부동산이 있으면 생애최초에 해당하지 않을 가능성이 높으므로 기본값을 꺼둠
+  // (사용자가 본인 상황에 맞게 직접 체크/해제 가능)
+  card.querySelector('.target-first-time').checked = !hasExistingHome;
+  card.querySelector('.upgrade-btn').onclick = () => calculateUpgrade(card);
 
   targetList.appendChild(card);
   updateTargetTitles();
@@ -1194,11 +1392,11 @@ async function fetchOneMonth(lawdCd, yyyymm) {
 }
 
 /* [신규] 선택한 지역구의 실제 실거래 내역에서 단지명 목록을 뽑아와
-   드롭다운을 채워주는 함수. 최근 12개월을 전부 확인해서, 한 단지에
-   여러 평형(59/84/101 등)이 있으면 그걸 다 모아 평형 드롭다운에 보여준다. */
+   검색용 입력창(자동완성)에서 쓸 수 있게 저장하는 함수. 최근 12개월을
+   전부 확인해서, 한 단지에 여러 평형(59/84/101 등)이 있으면 그걸 다 모은다. */
 async function loadComplexList(card, cardId) {
   const regionSelect = card.querySelector('.target-region');
-  const nameSelect = card.querySelector('.target-name');
+  const nameInput = card.querySelector('.target-name-input');
   const sizeSelect = card.querySelector('.target-size');
   const loadBtn = card.querySelector('.load-list-btn');
 
@@ -1211,7 +1409,8 @@ async function loadComplexList(card, cardId) {
 
   loadBtn.disabled = true;
   loadBtn.textContent = '⏳ 불러오는 중...';
-  nameSelect.disabled = true;
+  nameInput.disabled = true;
+  nameInput.value = '';
   sizeSelect.disabled = true;
   setTargetStatus(card, 'info', `${region}의 실거래 단지 목록을 불러오는 중입니다...`);
 
@@ -1251,26 +1450,24 @@ async function loadComplexList(card, cardId) {
     const names = Object.keys(complexSizeMap).sort((a, b) => a.localeCompare(b, 'ko'));
 
     if (names.length === 0) {
-      nameSelect.innerHTML = `<option value="">거래 내역을 찾지 못했습니다</option>`;
+      nameInput.placeholder = '거래 내역을 찾지 못했습니다';
       setTargetStatus(card, 'warn',
         `최근 ${monthsChecked}개월간 ${region}의 거래 내역을 찾지 못했습니다.` +
         (lastErrorMessage ? ` (마지막 오류: ${lastErrorMessage})` : ''));
       return;
     }
 
-    // 카드에 단지별 평형 목록을 저장해두고, 단지명 선택 시 참조
+    // 카드에 단지별 평형 목록을 저장해두고, 검색창에 입력할 때 자동완성으로 참조
     card._complexSizeMap = {};
     names.forEach(n => {
       card._complexSizeMap[n] = Array.from(complexSizeMap[n]).sort((a, b) => a - b);
     });
 
-    nameSelect.innerHTML =
-      `<option value="">단지를 선택하세요</option>` +
-      names.map(n => `<option value="${n}">${n}${card._complexSizeMap[n].length > 1 ? ` (${card._complexSizeMap[n].length}개 평형)` : ''}</option>`).join('');
-    nameSelect.disabled = false;
+    nameInput.disabled = false;
+    nameInput.placeholder = `단지명을 입력하세요 (${names.length}개 중 검색)`;
     sizeSelect.innerHTML = `<option value="">단지를 먼저 선택하세요</option>`;
 
-    setTargetStatus(card, 'success', `${region}에서 최근 ${monthsChecked}개월간 거래된 단지 ${names.length}개를 불러왔습니다.`);
+    setTargetStatus(card, 'success', `${region}에서 최근 ${monthsChecked}개월간 거래된 단지 ${names.length}개를 불러왔습니다. 단지명 칸에 이름을 입력해보세요.`);
 
   } catch (err) {
     console.error(err);
@@ -1284,7 +1481,7 @@ async function loadComplexList(card, cardId) {
 // 국토교통부 Open API 정밀 수집 알고리즘 (Cloudflare Worker + 백업 프록시)
 async function fetchMolitData(card, cardId) {
   const region = card.querySelector('.target-region').value;
-  const rawAptName = card.querySelector('.target-name').value.trim();
+  const rawAptName = card.querySelector('.target-name-input').value.trim();
   const targetAptKey = rawAptName.replace(/\s+/g, '').replace(/아파트|단지/g, '');
   const targetSize = parseFloat(card.querySelector('.target-size').value) || 0;
   const priceInput = card.querySelector('.target-price');
