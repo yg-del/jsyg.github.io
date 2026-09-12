@@ -337,6 +337,13 @@ input[readonly]{background:#f1f5f9;color:#64748b;cursor:not-allowed}
           </div>
         </div>
       </div>
+
+      <!-- 사용자가 직접 추가하는 부채 항목들이 여기 쌓임 -->
+      <div id="customLiabilityContainer"></div>
+    </div>
+
+    <div class="actions" style="margin-top: -8px; margin-bottom: 20px; justify-content: flex-start;">
+      <button type="button" class="add" id="addLiabilityBtn" style="height: 40px; font-size: 13px;">＋ 부채 항목 추가</button>
     </div>
 
     <!-- 투자한 부동산 보증금 자동 합산 -->
@@ -537,6 +544,8 @@ const familyMembersContainer = document.getElementById('familyMembersContainer')
 const addMemberBtn = document.getElementById('addMemberBtn');
 const familyFinanceContainer = document.getElementById('familyFinanceContainer');
 const addFinanceBtn = document.getElementById('addFinanceBtn');
+const customLiabilityContainer = document.getElementById('customLiabilityContainer');
+const addLiabilityBtn = document.getElementById('addLiabilityBtn');
 const targetList = document.getElementById('targetList');
 const addTargetBtn = document.getElementById('addTargetBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -586,9 +595,9 @@ function calculateSummary() {
   });
 
   let totalLoans = 0;
-  document.querySelectorAll('.group-box[data-loan]').forEach(group => {
-    const val = parseFloat(group.querySelector('.loan-amount').value) || 0;
-    totalLoans += val;
+  // [수정] 고정 5개 항목뿐 아니라, 사용자가 직접 추가한 부채 항목까지 전부 합산
+  document.querySelectorAll('.loan-amount').forEach(input => {
+    totalLoans += parseFloat(input.value) || 0;
   });
 
   const totalAssets = totalRealEstateValue + housingDeposit + totalBasicFinancialAssets + totalFamilyFinanceAssets;
@@ -961,6 +970,51 @@ function addFamilyFinance(data={}) {
 }
 
 addFinanceBtn.onclick = () => addFamilyFinance();
+
+// --- 사용자 추가 부채 항목 관리 ---
+function addCustomLiability(data = {}) {
+  const box = document.createElement('div');
+  box.className = 'group-box custom-liability';
+  box.innerHTML = `
+    <div class="group-title">
+      <input class="loan-custom-name" placeholder="예: 자동차 할부, 학자금 대출 등"
+        style="border:0; background:transparent; padding:0; height:auto; font-size:15px; font-weight:700; color:#1e293b; width:auto; flex:1;"
+        value="${data.name || ''}">
+      <button class="remove" type="button">삭제</button>
+    </div>
+    <div class="loan-grid">
+      <div>
+        <label>총 대출액</label>
+        <input class="loan-amount" type="number" min="0" step="1" placeholder="예: 1000 (만원)" value="${data.amount || ''}">
+      </div>
+      <div>
+        <label>연 이율 (%)</label>
+        <input class="loan-rate" type="number" min="0" step="0.01" placeholder="예: 6.0" value="${data.rate || ''}">
+      </div>
+      <div>
+        <label>상환방식</label>
+        <select class="loan-type">
+          <option value="">선택하세요</option>
+          <option>만기일시상환</option>
+          <option>원리금균등상환</option>
+          <option>원금균등상환</option>
+        </select>
+      </div>
+    </div>
+  `;
+
+  box.querySelector('.loan-type').value = data.type || '';
+  box.querySelector('.loan-amount').addEventListener('input', calculateSummary);
+
+  box.querySelector('.remove').onclick = () => {
+    box.remove();
+    calculateSummary();
+  };
+
+  customLiabilityContainer.appendChild(box);
+}
+
+addLiabilityBtn.onclick = () => addCustomLiability();
 
 // --- 가족 구성원별 통합 소득 및 지출 ---
 function updateFamilyMemberTitles() {
@@ -1618,17 +1672,194 @@ document.querySelectorAll('.loan-amount').forEach(input => {
   input.addEventListener('input', calculateSummary);
 });
 
+/* ============================================================
+   [신규] 실제 저장/복원 기능 (localStorage)
+   예전 코드는 "저장하기"를 눌러도 알림만 뜨고 아무 데도 저장하지
+   않아서, 새로고침하거나 다시 접속하면 항상 초기화됐습니다.
+   이제는 이 브라우저(이 기기의 이 브라우저 앱)에 실제로 저장되고,
+   다시 접속해도 그대로 남아있습니다.
+   ※ 주의: localStorage는 "브라우저 하나"에 저장되는 방식이라,
+   PC 크롬에서 저장한 내용이 휴대폰 브라우저에는 안 보입니다.
+   같은 기기·같은 브라우저로 접속해야 이어서 보입니다.
+   ============================================================ */
+const STORAGE_KEY = 'assetDashboardState_v1';
+
+function collectState() {
+  const state = { version: 1, savedAt: new Date().toISOString() };
+
+  state.assets = {};
+  document.querySelectorAll('.asset-input').forEach(input => {
+    state.assets[input.dataset.key] = input.value;
+  });
+
+  state.properties = Array.from(document.querySelectorAll('.property')).map(card => ({
+    type: card.querySelector('.type').value,
+    region: card.querySelector('.region').value,
+    name: card.querySelector('.name').value,
+    size: card.querySelector('.size').value,
+    purchasePrice: card.querySelector('.purchase-price').value,
+    price: card.querySelector('.price').value,
+    useType: card.querySelector('.useType').value,
+    deposit: card.querySelector('.deposit').value,
+    renewal: card.querySelector('.renewal').value,
+    expiry: card.querySelector('.expiry').value
+  }));
+
+  state.familyFinance = Array.from(document.querySelectorAll('.family-finance')).map(box => ({
+    relation: box.querySelector('.finance-relation').value,
+    total: box.querySelector('.finance-total').value,
+    principal: box.querySelector('.finance-principal').value,
+    profit: box.querySelector('.finance-profit').value
+  }));
+
+  state.fixedLiabilities = {};
+  document.querySelectorAll('.group-box[data-loan]').forEach(group => {
+    state.fixedLiabilities[group.dataset.loan] = {
+      amount: group.querySelector('.loan-amount').value,
+      rate: group.querySelector('.loan-rate').value,
+      type: group.querySelector('.loan-type').value
+    };
+  });
+
+  state.customLiabilities = Array.from(document.querySelectorAll('.custom-liability')).map(box => ({
+    name: box.querySelector('.loan-custom-name').value,
+    amount: box.querySelector('.loan-amount').value,
+    rate: box.querySelector('.loan-rate').value,
+    type: box.querySelector('.loan-type').value
+  }));
+
+  state.familyMembers = Array.from(document.querySelectorAll('.member-card')).map(card => ({
+    relation: card.querySelector('.member-relation').value,
+    income: {
+      work: card.querySelector('.income-work').value,
+      finance: card.querySelector('.income-finance').value,
+      etc: card.querySelector('.income-etc').value
+    },
+    expense: {
+      fixed: card.querySelector('.expense-fixed').value,
+      loan: card.querySelector('.expense-loan').value,
+      living: card.querySelector('.expense-living').value,
+      travel: card.querySelector('.expense-travel').value,
+      shopping: card.querySelector('.expense-shopping').value
+    }
+  }));
+
+  state.targets = Array.from(document.querySelectorAll('.target-card')).map(card => ({
+    region: card.querySelector('.target-region').value,
+    name: card.querySelector('.target-name-input').value,
+    size: card.querySelector('.target-size').value,
+    price: card.querySelector('.target-price').value,
+    firstTime: card.querySelector('.target-first-time').checked
+  }));
+
+  return state;
+}
+
+function restoreState(state) {
+  if (state.assets) {
+    document.querySelectorAll('.asset-input').forEach(input => {
+      if (state.assets[input.dataset.key] !== undefined) input.value = state.assets[input.dataset.key];
+    });
+  }
+
+  document.querySelectorAll('.property').forEach(c => c.remove());
+  num = 0;
+  const properties = state.properties || [];
+  if (properties.length > 0) properties.forEach(p => addProperty(p));
+  else addProperty();
+
+  familyFinanceContainer.innerHTML = '';
+  const finances = state.familyFinance || [];
+  if (finances.length > 0) finances.forEach(f => addFamilyFinance(f));
+  else addFamilyFinance();
+
+  if (state.fixedLiabilities) {
+    document.querySelectorAll('.group-box[data-loan]').forEach(group => {
+      const saved = state.fixedLiabilities[group.dataset.loan];
+      if (saved) {
+        group.querySelector('.loan-amount').value = saved.amount || '';
+        group.querySelector('.loan-rate').value = saved.rate || '';
+        group.querySelector('.loan-type').value = saved.type || '';
+      }
+    });
+  }
+
+  customLiabilityContainer.innerHTML = '';
+  (state.customLiabilities || []).forEach(l => addCustomLiability(l));
+
+  familyMembersContainer.innerHTML = '';
+  const members = state.familyMembers || [];
+  if (members.length > 0) members.forEach(m => addFamilyMember(m));
+  else addFamilyMember();
+
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+  targetList.innerHTML = '';
+  targetNum = 0;
+  const targets = state.targets || [];
+  if (targets.length > 0) {
+    targets.forEach(t => {
+      addTargetProperty({ region: t.region });
+      const card = targetList.lastElementChild;
+      const nameInput = card.querySelector('.target-name-input');
+      const sizeSelect = card.querySelector('.target-size');
+
+      if (t.name) {
+        nameInput.value = t.name;
+        nameInput.disabled = false;
+      }
+      if (t.size) {
+        sizeSelect.innerHTML = `<option value="${t.size}">${t.size}㎡</option>`;
+        sizeSelect.disabled = false;
+      }
+      if (t.price) card.querySelector('.target-price').value = t.price;
+      card.querySelector('.target-first-time').checked = !!t.firstTime;
+    });
+  } else {
+    addTargetProperty();
+  }
+
+  calculateSummary();
+}
+
 saveBtn.onclick = () => {
+  try {
+    const state = collectState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    toast.textContent = '입력 내용이 이 브라우저에 저장되었습니다.';
+  } catch (e) {
+    console.error(e);
+    toast.textContent = '저장에 실패했습니다: ' + (e.message || e);
+  }
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2000);
+  setTimeout(() => toast.classList.remove('show'), 2500);
 };
 
+// 안전장치: 저장 버튼을 깜빡 잊고 탭을 닫거나 다른 페이지로 이동해도
+// 마지막 상태가 자동으로 한 번 더 저장되도록 함
+window.addEventListener('beforeunload', () => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); } catch (e) {}
+});
+
 window.onload = function() {
+  const savedRaw = localStorage.getItem(STORAGE_KEY);
+  if (savedRaw) {
+    try {
+      const saved = JSON.parse(savedRaw);
+      restoreState(saved);
+      return;
+    } catch (e) {
+      console.error('저장된 데이터를 불러오지 못했습니다:', e);
+      // 저장된 데이터가 깨져있으면 아래의 기본 예시 데이터로 진행
+    }
+  }
+
+  // 저장된 데이터가 없을 때만 보여주는 최초 예시 데이터
   addProperty({ region: '서울시 강남구', name: '은마아파트', size: '84㎡', purchasePrice: 200000, price: 250000, type: '아파트', useType: '실거주' });
   addFamilyFinance({ relation: '본인', total: 5000, principal: 4000, profit: 1000 });
   addFamilyMember({ relation: '본인', income: { work: 450, finance: 20, etc: 0 }, expense: { fixed: 120, loan: 150, living: 180, travel: 30, shopping: 40 } });
-  addTargetProperty({ region: '경기 용인시 수지구', name: '신정마을9', size: '59', goal: '55000' });
-  
+  addTargetProperty({ region: '경기 용인시 수지구' });
+
   calculateSummary();
 };
 </script>
